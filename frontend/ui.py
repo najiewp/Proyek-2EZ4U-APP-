@@ -16,19 +16,62 @@ class AppUI:
     def __init__(self, root):
         self.root = root
         self.root.title("2EZ4U Food Delivery")
-        self.root.geometry("1100x720")
-        self.root.minsize(950, 600)
+        self.root.geometry("1180x740")
+        self.root.minsize(1000, 640)
         self.root.configure(bg="#eef2f6")
 
         self.sistem = SistemPesananM1()
         self.current_menu = None
         self.menu_buttons = []
 
+        # Variabel pagination tabel
+        self.page_size = 100
+        self.current_page = 1
+        self.total_pages = 1
+        self.show_all_mode = False
+
+        self._init_styles()
         self._setup_ui()
-        self._set_menu("ARRAY - TAMBAH PESANAN REGULER")
+        self._set_menu("ARRAY - LIHAT PESANAN")
+
+        # Coba muat otomatis data jika ada
+        if os.path.exists("data/pesanan.csv"):
+            self._aksi_load_csv("data/pesanan.csv")
+
+    def _init_styles(self):
+        self.style = ttk.Style()
+        try:
+            self.style.theme_use("clam")
+        except Exception:
+            pass
+
+        # Konfigurasi Header dan Isi Treeview
+        self.style.configure(
+            "Custom.Treeview.Heading",
+            background="#d1d5db",
+            foreground="#111827",
+            font=("Segoe UI", 9, "bold"),
+            relief="solid",
+            borderwidth=1
+        )
+        self.style.configure(
+            "Custom.Treeview",
+            background="#ffffff",
+            foreground="#1e293b",
+            fieldbackground="#ffffff",
+            font=("Segoe UI", 9),
+            rowheight=24,
+            relief="solid",
+            borderwidth=1
+        )
+        self.style.map(
+            "Custom.Treeview",
+            background=[("selected", "#dbeafe")],
+            foreground=[("selected", "#1e3a8a")]
+        )
 
     def _setup_ui(self):
-        # 1. Header Banner
+        # 1. Header Banner Atas
         header = tk.Frame(self.root, bg="#1c3b57", height=42)
         header.pack(fill=tk.X, side=tk.TOP)
         header.pack_propagate(False)
@@ -43,7 +86,7 @@ class AppUI:
         )
         title_lbl.pack(side=tk.LEFT, fill=tk.Y)
 
-        # 2. Main Content Area (Paned / Split Frame)
+        # 2. Main Content Area (Split Kiri & Kanan)
         main_pane = tk.Frame(self.root, bg="#eef2f6")
         main_pane.pack(fill=tk.BOTH, expand=True, padx=8, pady=(6, 2))
 
@@ -177,7 +220,7 @@ class AppUI:
 
     def _create_content_panel(self, parent):
         # 1. Top Section: Header & Form
-        self.form_container = tk.Frame(parent, bg="#ffffff", padx=16, pady=12)
+        self.form_container = tk.Frame(parent, bg="#ffffff", padx=16, pady=8)
         self.form_container.pack(fill=tk.X, side=tk.TOP)
 
         self.title_label = tk.Label(
@@ -198,38 +241,47 @@ class AppUI:
             font=("Segoe UI", 9, "italic"),
             anchor="w"
         )
-        self.subtitle_label.pack(fill=tk.X, pady=(2, 8))
+        self.subtitle_label.pack(fill=tk.X, pady=(2, 6))
 
         # Dynamic Form inputs
         self.form_fields_frame = tk.Frame(self.form_container, bg="#ffffff")
-        self.form_fields_frame.pack(fill=tk.X, pady=(0, 6))
+        self.form_fields_frame.pack(fill=tk.X, pady=(0, 4))
 
-        # 2. Middle Section: Result Output Box
-        result_box_frame = tk.Frame(parent, bg="#ffffff", padx=16, pady=4)
-        result_box_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
-
-        self.result_text = tk.Text(
-            result_box_frame,
-            bg="#ffffff",
+        # Action Info / Notification banner
+        self.action_info_lbl = tk.Label(
+            self.form_container,
+            text="",
+            bg="#f1f5f9",
             fg="#0f172a",
-            font=("Consolas", 10),
-            bd=1,
-            relief=tk.SOLID,
+            font=("Segoe UI", 9),
+            anchor="w",
             padx=8,
-            pady=8,
-            wrap=tk.NONE
+            pady=4,
+            bd=1,
+            relief=tk.GROOVE
         )
-        res_scroll_y = tk.Scrollbar(result_box_frame, orient=tk.VERTICAL, command=self.result_text.yview)
-        res_scroll_x = tk.Scrollbar(result_box_frame, orient=tk.HORIZONTAL, command=self.result_text.xview)
-        self.result_text.configure(yscrollcommand=res_scroll_y.set, xscrollcommand=res_scroll_x.set)
+        self.action_info_lbl.pack(fill=tk.X, pady=(2, 0))
 
-        res_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        res_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
-        self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # 2. Middle Section: Tabbed Notebook (Tabel & Log)
+        self.notebook_frame = tk.Frame(parent, bg="#ffffff", padx=16, pady=4)
+        self.notebook_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.notebook = ttk.Notebook(self.notebook_frame)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Tab 1: Tabel Pesanan (Semua Data)
+        self.tab_table = tk.Frame(self.notebook, bg="#ffffff")
+        self.notebook.add(self.tab_table, text="  📋 Tabel Semua Pesanan  ")
+        self._create_table_view(self.tab_table)
+
+        # Tab 2: Log & Rincian
+        self.tab_log = tk.Frame(self.notebook, bg="#ffffff")
+        self.notebook.add(self.tab_log, text="  ⚡ Log & Adu Performa  ")
+        self._create_log_view(self.tab_log)
 
         # 3. Bottom Section: COMMAND history panel
         cmd_container = tk.Frame(parent, bg="#ffffff", padx=16, pady=4)
-        cmd_container.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 10))
+        cmd_container.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 8))
 
         cmd_title = tk.Label(
             cmd_container,
@@ -249,7 +301,7 @@ class AppUI:
             bg="#f8fafc",
             fg="#1e293b",
             font=("Consolas", 9),
-            height=4,
+            height=3,
             wrap=tk.NONE,
             bd=0
         )
@@ -259,14 +311,223 @@ class AppUI:
         cmd_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         self.cmd_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+    def _create_table_view(self, parent):
+        table_container = tk.Frame(parent, bg="#ffffff")
+        table_container.pack(fill=tk.BOTH, expand=True, pady=4)
+
+        columns = (
+            "oid",
+            "pelanggan",
+            "resto",
+            "menu",
+            "harga",
+            "prioritas",
+            "t_masuk_detik",
+            "t_selesai_detik",
+            "status"
+        )
+
+        self.tree = ttk.Treeview(
+            table_container,
+            columns=columns,
+            show="headings",
+            style="Custom.Treeview",
+            selectmode="browse"
+        )
+
+        col_configs = (
+            ("oid", "oid", 95, tk.CENTER),
+            ("pelanggan", "pelanggan", 210, tk.W),
+            ("resto", "resto", 130, tk.W),
+            ("menu", "menu", 130, tk.W),
+            ("harga", "harga", 85, tk.CENTER),
+            ("prioritas", "prioritas", 75, tk.CENTER),
+            ("t_masuk_detik", "t_masuk_detik", 110, tk.CENTER),
+            ("t_selesai_detik", "t_selesai_detik", 110, tk.CENTER),
+            ("status", "status", 85, tk.CENTER),
+        )
+
+        for col_id, col_text, col_w, col_anchor in col_configs:
+            self.tree.heading(col_id, text=col_text, anchor=col_anchor)
+            self.tree.column(col_id, width=col_w, minwidth=60, anchor=col_anchor)
+
+        # Scrollbars untuk Treeview
+        tree_scroll_y = tk.Scrollbar(table_container, orient=tk.VERTICAL, command=self.tree.yview)
+        tree_scroll_x = tk.Scrollbar(table_container, orient=tk.HORIZONTAL, command=self.tree.xview)
+        self.tree.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
+
+        tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Bar Kontrol & Navigasi Halaman di Bawah Tabel
+        nav_bar = tk.Frame(parent, bg="#f8fafc", bd=1, relief=tk.SOLID, padx=6, pady=4)
+        nav_bar.pack(fill=tk.X, side=tk.BOTTOM, pady=(4, 0))
+
+        btn_first = tk.Button(nav_bar, text="⏮ Awal", font=("Segoe UI", 8), command=self._page_first)
+        btn_first.pack(side=tk.LEFT, padx=2)
+
+        btn_prev = tk.Button(nav_bar, text="◀ Sebelumnya", font=("Segoe UI", 8), command=self._page_prev)
+        btn_prev.pack(side=tk.LEFT, padx=2)
+
+        self.lbl_page_info = tk.Label(nav_bar, text="Halaman 1 / 1", bg="#f8fafc", font=("Segoe UI", 9, "bold"), padx=6)
+        self.lbl_page_info.pack(side=tk.LEFT, padx=4)
+
+        btn_next = tk.Button(nav_bar, text="Berikutnya ▶", font=("Segoe UI", 8), command=self._page_next)
+        btn_next.pack(side=tk.LEFT, padx=2)
+
+        btn_last = tk.Button(nav_bar, text="Akhir ⏭", font=("Segoe UI", 8), command=self._page_last)
+        btn_last.pack(side=tk.LEFT, padx=2)
+
+        tk.Label(nav_bar, text="| Tampilkan:", bg="#f8fafc", font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(8, 2))
+
+        btn_100 = tk.Button(nav_bar, text="100", font=("Segoe UI", 8), command=lambda: self._set_page_size(100))
+        btn_100.pack(side=tk.LEFT, padx=1)
+
+        btn_500 = tk.Button(nav_bar, text="500", font=("Segoe UI", 8), command=lambda: self._set_page_size(500))
+        btn_500.pack(side=tk.LEFT, padx=1)
+
+        btn_all = tk.Button(nav_bar, text="Semua Data", font=("Segoe UI", 8, "bold"), command=self._tampilkan_semua_data)
+        btn_all.pack(side=tk.LEFT, padx=2)
+
+        self.lbl_total_info = tk.Label(
+            nav_bar,
+            text="Total: 0 pesanan",
+            bg="#f8fafc",
+            fg="#475569",
+            font=("Segoe UI", 9)
+        )
+        self.lbl_total_info.pack(side=tk.RIGHT, padx=6)
+
+        # Event saat baris diklik
+        self.tree.bind("<ButtonRelease-1>", self._on_tree_row_clicked)
+
+    def _create_log_view(self, parent):
+        log_container = tk.Frame(parent, bg="#ffffff", padx=4, pady=4)
+        log_container.pack(fill=tk.BOTH, expand=True)
+
+        self.result_text = tk.Text(
+            log_container,
+            bg="#ffffff",
+            fg="#0f172a",
+            font=("Consolas", 10),
+            bd=1,
+            relief=tk.SOLID,
+            padx=8,
+            pady=8,
+            wrap=tk.NONE
+        )
+        res_scroll_y = tk.Scrollbar(log_container, orient=tk.VERTICAL, command=self.result_text.yview)
+        res_scroll_x = tk.Scrollbar(log_container, orient=tk.HORIZONTAL, command=self.result_text.xview)
+        self.result_text.configure(yscrollcommand=res_scroll_y.set, xscrollcommand=res_scroll_x.set)
+
+        res_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        res_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
     def _log_command(self, cmd_name, module_name, durasi_ms):
-        log_line = "%-22s -> %-18s %8.2f ms\n" % (cmd_name, module_name, durasi_ms)
+        log_line = "%-24s -> %-18s %8.2f ms\n" % (cmd_name, module_name, durasi_ms)
         self.cmd_text.insert(tk.END, log_line)
         self.cmd_text.see(tk.END)
 
     def _update_status(self, badge_text, info_text):
         self.status_badge.config(text=badge_text)
         self.status_info.config(text=info_text)
+
+    def _on_tree_row_clicked(self, event):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            return
+        item_id = selected_items[0]
+        values = self.tree.item(item_id, "values")
+        if values and len(values) >= 9:
+            msg = "Pesanan Dipilih: %s | Pelanggan: %s | Menu: %s | Harga: Rp %s | Prioritas: %s | Status: %s" % (
+                values[0], values[1], values[3], values[4], values[5], values[8]
+            )
+            self.action_info_lbl.config(text=msg)
+
+    def _refresh_table(self, highlight_idx=None):
+        """Memperbarui baris tabel Treeview sesuai halaman saat ini."""
+        self.tree.delete(*self.tree.get_children())
+        total = self.sistem.array.size
+
+        if total == 0:
+            self.lbl_page_info.config(text="Halaman 0 / 0")
+            self.lbl_total_info.config(text="Total: 0 pesanan")
+            return
+
+        if self.show_all_mode:
+            start_idx = 0
+            end_idx = total
+            self.lbl_page_info.config(text="Semua Data")
+        else:
+            self.total_pages = (total + self.page_size - 1) // self.page_size
+            if self.current_page > self.total_pages:
+                self.current_page = self.total_pages
+            if self.current_page < 1:
+                self.current_page = 1
+
+            start_idx = (self.current_page - 1) * self.page_size
+            end_idx = min(start_idx + self.page_size, total)
+            self.lbl_page_info.config(text="Halaman %d / %d" % (self.current_page, self.total_pages))
+
+        self.lbl_total_info.config(text="Menampilkan %d - %d dari %d pesanan" % (start_idx + 1, end_idx, total))
+
+        target_item_id = None
+        for i in range(start_idx, end_idx):
+            p = self.sistem.array.get(i)
+            selesai_str = str(p.t_selesai_detik) if p.t_selesai_detik is not None else ""
+            row_vals = (
+                p.oid,
+                p.pelanggan,
+                p.resto,
+                p.menu,
+                str(p.harga),
+                str(p.prioritas),
+                str(p.t_masuk_detik),
+                selesai_str,
+                p.status
+            )
+            item_id = "row_%d" % i
+            self.tree.insert("", tk.END, iid=item_id, values=row_vals)
+            if highlight_idx is not None and i == highlight_idx:
+                target_item_id = item_id
+
+        if target_item_id:
+            self.tree.selection_set(target_item_id)
+            self.tree.see(target_item_id)
+
+    def _page_first(self):
+        self.show_all_mode = False
+        self.current_page = 1
+        self._refresh_table()
+
+    def _page_prev(self):
+        self.show_all_mode = False
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._refresh_table()
+
+    def _page_next(self):
+        self.show_all_mode = False
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._refresh_table()
+
+    def _page_last(self):
+        self.show_all_mode = False
+        self.current_page = self.total_pages
+        self._refresh_table()
+
+    def _set_page_size(self, size):
+        self.show_all_mode = False
+        self.page_size = size
+        self.current_page = 1
+        self._refresh_table()
+
+    def _tampilkan_semua_data(self):
+        self.show_all_mode = True
+        self._refresh_table()
 
     def _set_menu(self, menu_name):
         self.current_menu = menu_name
@@ -310,36 +571,49 @@ class AppUI:
         elif "LIHAT PESANAN" in menu_name:
             is_arr = "ARRAY" in menu_name
             if is_arr:
-                self.title_label.config(text="Array: lihat pesanan ke-i")
-                self.subtitle_label.config(text="buka detail satu pesanan secara langsung O(1).")
+                self.title_label.config(text="Array: Lihat Data Pesanan (Tabel Lengkap)")
+                self.subtitle_label.config(text="Melihat seluruh daftar pesanan secara terstruktur atau melompat ke indeks ke-i (O(1)).")
             else:
-                self.title_label.config(text="Linked List: lihat pesanan ke-i")
-                self.subtitle_label.config(text="buka detail satu pesanan dengan penelusuran simpul O(n).")
+                self.title_label.config(text="Linked List: Lihat Data Pesanan (Tabel Lengkap)")
+                self.subtitle_label.config(text="Melihat seluruh daftar pesanan secara terstruktur atau melompat ke indeks ke-i (O(n) telusur).")
 
             row = tk.Frame(self.form_fields_frame, bg="#ffffff")
             row.pack(fill=tk.X, pady=2)
 
-            tk.Label(row, text="Indeks pesanan (ke-i):", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-            idx_entry = tk.Entry(row, width=15, font=("Segoe UI", 9))
+            tk.Label(row, text="Lompat ke Indeks (ke-i):", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 8))
+            idx_entry = tk.Entry(row, width=12, font=("Segoe UI", 9))
             idx_entry.insert(0, "0")
             idx_entry.pack(side=tk.LEFT, padx=(0, 10))
 
-            btn = tk.Button(
+            btn_find = tk.Button(
                 row,
-                text="LIHAT",
+                text="CARI & SOROT",
                 bg="#1c3b57",
                 fg="#ffffff",
                 font=("Segoe UI", 9, "bold"),
-                padx=14,
+                padx=12,
                 pady=2,
                 cursor="hand2",
                 command=lambda: self._aksi_lihat_pesanan(is_arr, idx_entry.get().strip())
             )
-            btn.pack(side=tk.LEFT)
+            btn_find.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn_all = tk.Button(
+                row,
+                text="TAMPILKAN SEMUA DATA",
+                bg="#0284c7",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=12,
+                pady=2,
+                cursor="hand2",
+                command=self._tampilkan_semua_data
+            )
+            btn_all.pack(side=tk.LEFT)
 
             hint = tk.Label(
                 self.form_fields_frame,
-                text="masukkan nomor indeks (0 sampai ukuran-1)",
+                text="masukkan nomor indeks (0 s/d n-1) untuk menguji kecepatan akses dan menyorot baris pada tabel di bawah",
                 bg="#ffffff",
                 fg="#64748b",
                 font=("Segoe UI", 8)
@@ -349,10 +623,10 @@ class AppUI:
         elif "HAPUS PESANAN" in menu_name:
             is_arr = "ARRAY" in menu_name
             if is_arr:
-                self.title_label.config(text="Array: hapus pesanan ke-i")
+                self.title_label.config(text="Array: Hapus Pesanan ke-i")
                 self.subtitle_label.config(text="pesanan dicabut dari barisan, menggeser sisa elemen ke kiri O(n).")
             else:
-                self.title_label.config(text="Linked List: hapus pesanan ke-i")
+                self.title_label.config(text="Linked List: Hapus Pesanan ke-i")
                 self.subtitle_label.config(text="pesanan dicabut dari barisan setelah menelusuri simpul ke-(i-1) O(n).")
 
             row = tk.Frame(self.form_fields_frame, bg="#ffffff")
@@ -366,7 +640,7 @@ class AppUI:
             btn = tk.Button(
                 row,
                 text="HAPUS",
-                bg="#1c3b57",
+                bg="#b91c1c",
                 fg="#ffffff",
                 font=("Segoe UI", 9, "bold"),
                 padx=14,
@@ -378,7 +652,7 @@ class AppUI:
 
             hint = tk.Label(
                 self.form_fields_frame,
-                text="pesanan pada indeks yang ditentukan akan dicabut",
+                text="pesanan pada indeks yang ditentukan akan dihapus dan tabel akan diperbarui",
                 bg="#ffffff",
                 fg="#64748b",
                 font=("Segoe UI", 8)
@@ -435,7 +709,7 @@ class AppUI:
 
             hint = tk.Label(
                 self.form_fields_frame,
-                text="nama untuk pesanan yang akan dibuat",
+                text="pesanan baru akan disisipkan dan langsung ditampilkan pada tabel di bawah",
                 bg="#ffffff",
                 fg="#64748b",
                 font=("Segoe UI", 8)
@@ -462,32 +736,16 @@ class AppUI:
             )
             btn.pack(side=tk.LEFT)
 
-    def _tampilkan_tabel_pesanan(self, p, info_tambahan=""):
-        self.result_text.delete("1.0", tk.END)
-
-        if info_tambahan:
-            self.result_text.insert(tk.END, info_tambahan + "\n\n")
-
-        header_tbl = "%-16s | %s\n" % ("kolom", "isi")
-        separator  = "%s\n" % ("-" * 50)
-        self.result_text.insert(tk.END, header_tbl)
-        self.result_text.insert(tk.END, separator)
-
-        rows = (
-            ("oid", p.oid),
-            ("pelanggan", p.pelanggan),
-            ("resto", p.resto),
-            ("menu", p.menu),
-            ("harga", p.format_harga()),
-            ("prioritas", str(p.prioritas)),
-            ("masuk", p.format_t_masuk()),
-            ("selesai", p.format_t_selesai()),
-            ("status", p.status),
-        )
-
-        for col, val in rows:
-            line = "%-16s | %s\n" % (col, val)
-            self.result_text.insert(tk.END, line)
+    def _pastikan_data_termuat(self):
+        if not self.sistem.is_loaded or self.sistem.array.size == 0:
+            csv_path = "data/pesanan.csv"
+            if os.path.exists(csv_path):
+                self._aksi_load_csv(csv_path)
+                return True
+            else:
+                messagebox.showwarning("Peringatan", "Silakan muat data CSV terlebih dahulu melalui menu DATA -> Load.")
+                return False
+        return True
 
     def _aksi_load_csv(self, filepath):
         if not os.path.exists(filepath):
@@ -502,23 +760,32 @@ class AppUI:
             self._log_command("load", "M1 - larik", ms_arr)
             self._log_command("load", "M1 - linked list", ms_ll)
 
+            self.current_page = 1
+            self._refresh_table()
+            self.notebook.select(0)
+
+            msg = "Data berhasil dimuat: %d pesanan. Larik: %.2f ms (Kapasitas: %d) | Rantai: %.2f ms" % (
+                total, ms_arr, self.sistem.array.capacity, ms_ll
+            )
+            self.action_info_lbl.config(text=msg)
+
+            # Rincian teks pada tab Log
             self.result_text.delete("1.0", tk.END)
-            msg = "=" * 60 + "\n"
-            msg += "HASIL PEMUATAN DATA PESANAN\n"
-            msg += "=" * 60 + "\n"
-            msg += "Berkas sumber          : %s\n" % filepath
-            msg += "Total data terbaca     : %d pesanan\n\n" % total
-            msg += "1. STRUKTUR LARIK (ARRAY BERUKURAN TETAP 2x):\n"
-            msg += "   - Ukuran data       : %d elemen\n" % self.sistem.array.size
-            msg += "   - Kapasitas akhir   : %d slot\n" % self.sistem.array.capacity
-            msg += "   - Total resize 2x   : %d kali penggandaan\n" % self.sistem.array.resize_count
-            msg += "   - Durasi pemuatan   : %.2f ms (amortized O(1))\n\n" % ms_arr
-            msg += "2. STRUKTUR RANTAI (LINKED LIST HEAD & TAIL):\n"
-            msg += "   - Ukuran simpul     : %d simpul\n" % self.sistem.linklist.size
-            msg += "   - Durasi pemuatan   : %.2f ms (O(1) via pointer tail)\n" % ms_ll
-            msg += "=" * 60 + "\n"
-            msg += "Data siap digunakan untuk pengujian operasi M1.\n"
-            self.result_text.insert(tk.END, msg)
+            txt = "=" * 60 + "\n"
+            txt += "HASIL PEMUATAN DATA PESANAN\n"
+            txt += "=" * 60 + "\n"
+            txt += "Berkas sumber          : %s\n" % filepath
+            txt += "Total data terbaca     : %d pesanan\n\n" % total
+            txt += "1. STRUKTUR LARIK (ARRAY BERUKURAN TETAP 2x):\n"
+            txt += "   - Ukuran data       : %d elemen\n" % self.sistem.array.size
+            txt += "   - Kapasitas akhir   : %d slot\n" % self.sistem.array.capacity
+            txt += "   - Total resize 2x   : %d kali penggandaan\n" % self.sistem.array.resize_count
+            txt += "   - Durasi pemuatan   : %.2f ms (amortized O(1))\n\n" % ms_arr
+            txt += "2. STRUKTUR RANTAI (LINKED LIST HEAD & TAIL):\n"
+            txt += "   - Ukuran simpul     : %d simpul\n" % self.sistem.linklist.size
+            txt += "   - Durasi pemuatan   : %.2f ms (O(1) via pointer tail)\n" % ms_ll
+            txt += "=" * 60 + "\n"
+            self.result_text.insert(tk.END, txt)
 
             badge = "[M1 - larik] %.2f ms" % ms_arr
             info = "Total: %d pesanan | Kapasitas: %d" % (total, self.sistem.array.capacity)
@@ -527,17 +794,6 @@ class AppUI:
         except Exception as e:
             messagebox.showerror("Galat Pemuatan", str(e))
             self._update_status("[ galat ]", str(e))
-
-    def _pastikan_data_termuat(self):
-        if not self.sistem.is_loaded or self.sistem.array.size == 0:
-            csv_path = "data/pesanan.csv"
-            if os.path.exists(csv_path):
-                self._aksi_load_csv(csv_path)
-                return True
-            else:
-                messagebox.showwarning("Peringatan", "Silakan muat data CSV terlebih dahulu melalui menu DATA -> Load.")
-                return False
-        return True
 
     def _aksi_lihat_pesanan(self, is_arr, idx_str):
         if not self._pastikan_data_termuat():
@@ -557,16 +813,23 @@ class AppUI:
             p, ms, shifts = self.sistem.array_lihat(idx)
             modul = "M1 - array"
             cmd = "array_get"
-            info = "ARRAY: Pesanan pada indeks ke-%d ditemukan.\nWaktu akses: %.2f ms (O(1) langsung via alamat memori)." % (idx, ms)
+            info = "ARRAY: Pesanan pada indeks ke-%d (%s) ditemukan. Waktu akses: %.2f ms (O(1) langsung memori)." % (idx, p.oid, ms)
         else:
             p, ms, trav = self.sistem.linklist_lihat(idx)
             modul = "M1 - linked list"
             cmd = "linklist_get"
-            info = "LINKED LIST: Pesanan pada indeks ke-%d ditemukan.\nWaktu akses: %.2f ms (O(n) - %d simpul ditelusuri)." % (idx, ms, trav)
+            info = "LINKED LIST: Pesanan pada indeks ke-%d (%s) ditemukan. Waktu: %.2f ms (%d simpul ditelusuri - O(n))." % (idx, p.oid, ms, trav)
 
         self._log_command(cmd, modul, ms)
         self._update_status("[%s] %.2f ms" % (modul, ms), "Lihat pesanan indeks ke-%d" % idx)
-        self._tampilkan_tabel_pesanan(p, info)
+        self.action_info_lbl.config(text=info)
+
+        # Buka tab tabel dan sorot baris yang dicari
+        self.notebook.select(0)
+        if not self.show_all_mode:
+            target_page = (idx // self.page_size) + 1
+            self.current_page = target_page
+        self._refresh_table(highlight_idx=idx)
 
     def _aksi_hapus_pesanan(self, is_arr, idx_str):
         if not self._pastikan_data_termuat():
@@ -586,16 +849,19 @@ class AppUI:
             p, ms, shifts = self.sistem.array_hapus(idx, sinkron=True)
             modul = "M1 - array"
             cmd = "array_delete"
-            info = "ARRAY: Pesanan %s dicabut dari indeks ke-%d.\nPergeseran: %d elemen digeser ke kiri (O(n)).\nWaktu eksekusi: %.2f ms." % (p.oid, idx, shifts, ms)
+            info = "ARRAY: Pesanan %s dicabut dari indeks ke-%d. Pergeseran: %d elemen (O(n)). Waktu: %.2f ms." % (p.oid, idx, shifts, ms)
         else:
             p, ms, trav = self.sistem.linklist_hapus(idx, sinkron=True)
             modul = "M1 - linked list"
             cmd = "linklist_delete"
-            info = "LINKED LIST: Pesanan %s dicabut dari indeks ke-%d.\nPenelusuran: %d simpul ditelusuri (O(n)).\nWaktu eksekusi: %.2f ms." % (p.oid, idx, trav, ms)
+            info = "LINKED LIST: Pesanan %s dicabut dari indeks ke-%d. Penelusuran: %d simpul (O(n)). Waktu: %.2f ms." % (p.oid, idx, trav, ms)
 
         self._log_command(cmd, modul, ms)
         self._update_status("[%s] %.2f ms" % (modul, ms), "Hapus pesanan %s" % p.oid)
-        self._tampilkan_tabel_pesanan(p, info)
+        self.action_info_lbl.config(text=info)
+
+        self.notebook.select(0)
+        self._refresh_table()
 
     def _aksi_tambah_pesanan(self, is_arr, jenis, nama_pelanggan):
         if not self._pastikan_data_termuat():
@@ -617,43 +883,57 @@ class AppUI:
             status="ANTRE"
         )
 
+        target_highlight_idx = 0
         if is_arr:
             modul = "M1 - array"
             if jenis == "REGULER":
                 cmd = "array_append_reguler"
                 p, ms, shifts = self.sistem.array_tambah_reguler(p, sinkron=True)
                 penjelasan = "masuk barisan paling belakang: %d elemen digeser (O(1) amortized)." % shifts
+                target_highlight_idx = self.sistem.array.size - 1
             elif jenis == "PRIORITAS":
                 cmd = "array_insert_prioritas"
                 p, ms, shifts = self.sistem.array_tambah_prioritas(p, sinkron=True)
                 penjelasan = "menyerobot ke tengah barisan: %d elemen digeser ke kanan (O(n))." % shifts
+                target_highlight_idx = (self.sistem.array.size - 1) // 2
             else:  # VIP
                 cmd = "array_insert_vip"
                 p, ms, shifts = self.sistem.array_tambah_vip(p, sinkron=True)
                 penjelasan = "langsung ke urutan pertama (indeks 0): %d elemen digeser ke kanan (O(n))." % shifts
+                target_highlight_idx = 0
 
-            info = "ARRAY: Pesanan %s (%s) berhasil ditambahkan.\nPerilaku: %s\nWaktu eksekusi: %.2f ms." % (p.oid, jenis, penjelasan, ms)
+            info = "ARRAY: Pesanan %s (%s) berhasil ditambahkan. %s Waktu: %.2f ms." % (p.oid, jenis, penjelasan, ms)
 
         else:
             modul = "M1 - linked list"
             if jenis == "REGULER":
                 cmd = "linklist_append_reguler"
                 p, ms, trav = self.sistem.linklist_tambah_reguler(p, sinkron=True)
-                penjelasan = "masuk barisan paling belakang: %d simpul ditelusuri (O(1) via penunjuk tail)." % trav
+                penjelasan = "masuk paling belakang via tail: %d simpul ditelusuri (O(1))." % trav
+                target_highlight_idx = self.sistem.linklist.size - 1
             elif jenis == "PRIORITAS":
                 cmd = "linklist_insert_prioritas"
                 p, ms, trav = self.sistem.linklist_tambah_prioritas(p, sinkron=True)
-                penjelasan = "menyerobot ke tengah: %d simpul ditelusuri lalu sambung sekali (O(n) telusur)." % trav
+                penjelasan = "menyerobot ke tengah: %d simpul ditelusuri (O(n))." % trav
+                target_highlight_idx = (self.sistem.linklist.size - 1) // 2
             else:  # VIP
                 cmd = "linklist_prepend_vip"
                 p, ms, trav = self.sistem.linklist_tambah_vip(p, sinkron=True)
-                penjelasan = "langsung ke urutan pertama (head): %d simpul ditelusuri (O(1) ubah penunjuk head)." % trav
+                penjelasan = "langsung ke urutan pertama (head): %d simpul ditelusuri (O(1))." % trav
+                target_highlight_idx = 0
 
-            info = "LINKED LIST: Pesanan %s (%s) berhasil ditambahkan.\nPerilaku: %s\nWaktu eksekusi: %.2f ms." % (p.oid, jenis, penjelasan, ms)
+            info = "LINKED LIST: Pesanan %s (%s) berhasil ditambahkan. %s Waktu: %.2f ms." % (p.oid, jenis, penjelasan, ms)
 
         self._log_command(cmd, modul, ms)
         self._update_status("[%s] %.2f ms" % (modul, ms), "Tambah pesanan %s (%s)" % (p.oid, jenis))
-        self._tampilkan_tabel_pesanan(p, info)
+        self.action_info_lbl.config(text=info)
+
+        # Tampilkan di tabel dan sorot baris baru
+        self.notebook.select(0)
+        if not self.show_all_mode:
+            target_page = (target_highlight_idx // self.page_size) + 1
+            self.current_page = target_page
+        self._refresh_table(highlight_idx=target_highlight_idx)
 
     def _aksi_benchmark(self):
         if not self._pastikan_data_termuat():
@@ -729,8 +1009,11 @@ class AppUI:
         msg += "4. LIHAT     : Array menang mutlak O(1) via pengalamatan langsung memori, sedangkan Linked List harus menelusuri simpul demi simpul O(n).\n"
 
         self.result_text.insert(tk.END, msg)
+        self.notebook.select(1)  # Buka tab log / hasil adu performa
+
         self._log_command("benchmark_m1", "M1 - adu performa", t_arr_vip)
         self._update_status("[M1 - benchmark] Selesai", "Adu performa Array vs Linked List berhasil.")
+        self.action_info_lbl.config(text="Adu performa selesai. Hasil rincian ditampilkan pada tab Log & Adu Performa.")
 
     def _placeholder_milestone(self, m_name):
         messagebox.showinfo("Informasi Milestone", "Fitur %s akan dikembangkan pada tahapan tugas berikutnya." % m_name)
