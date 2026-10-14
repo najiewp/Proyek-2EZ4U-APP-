@@ -10,6 +10,7 @@ from tkinter import ttk, messagebox
 import time
 import os
 from backend.m1_pesanan import Pesanan, SistemPesananM1
+from backend.m2_antrean import SistemAntreanM2, KasirPostfix, Stack, AntreanNaif, AntreanMelingkar
 
 
 class AppUI:
@@ -21,6 +22,8 @@ class AppUI:
         self.root.configure(bg="#eef2f6")
 
         self.sistem = SistemPesananM1()
+        self.sistem_m2 = SistemAntreanM2()
+        self.tabel_sumber = "M1"  # "M1" atau "M2"
         self.current_menu = None
         self.menu_buttons = []
 
@@ -163,11 +166,15 @@ class AppUI:
         self._add_sidebar_button(scrollable_frame, "LINKEDLIST - HAPUS PESANAN", lambda: self._set_menu("LINKEDLIST - HAPUS PESANAN"))
         self._add_sidebar_button(scrollable_frame, "ADU PERFORMA ARRAY VS LINKEDLIST", lambda: self._set_menu("BENCHMARK M1"))
 
-        # Group 3: M2 - ANTREAN DAN UNDO (Placeholder visual)
-        self._add_group_label(scrollable_frame, "M2 - ANTREAN DAN UNDO")
-        self._add_sidebar_button(scrollable_frame, "Isi antrean FIFO", lambda: self._placeholder_milestone("M2"))
-        self._add_sidebar_button(scrollable_frame, "Layani berikutnya", lambda: self._placeholder_milestone("M2"))
-        self._add_sidebar_button(scrollable_frame, "Undo", lambda: self._placeholder_milestone("M2"))
+        # Group 3: M2 - ANTREAN & TUMPUKAN
+        self._add_group_label(scrollable_frame, "M2 - ANTREAN & TUMPUKAN")
+        self._add_sidebar_button(scrollable_frame, "STACK - POSTFIX (MESIN KASIR)", lambda: self._set_menu("STACK - POSTFIX"))
+        self._add_sidebar_button(scrollable_frame, "QUEUE - ENQUEUE", lambda: self._set_menu("QUEUE - ENQUEUE"))
+        self._add_sidebar_button(scrollable_frame, "QUEUE - DEQUEUE NAIF", lambda: self._set_menu("QUEUE - DEQUEUE NAIF"))
+        self._add_sidebar_button(scrollable_frame, "QUEUE - DEQUEUE CIRCULAR", lambda: self._set_menu("QUEUE - DEQUEUE CIRCULAR"))
+        self._add_sidebar_button(scrollable_frame, "STACK - UNDO", lambda: self._set_menu("STACK - UNDO"))
+        self._add_sidebar_button(scrollable_frame, "STACK - REDO", lambda: self._set_menu("STACK - REDO"))
+        self._add_sidebar_button(scrollable_frame, "ADU PERFORMA DEQUEUE NAIF VS CIRCULAR", lambda: self._set_menu("BENCHMARK M2"))
 
         # Group 4: M3 DAN M4 - LAPORAN DAN PENCARIAN
         self._add_group_label(scrollable_frame, "M3 DAN M4 - LAPORAN DAN PENCARIAN")
@@ -278,6 +285,11 @@ class AppUI:
         self.tab_log = tk.Frame(self.notebook, bg="#ffffff")
         self.notebook.add(self.tab_log, text="  ⚡ Log & Adu Performa  ")
         self._create_log_view(self.tab_log)
+
+        # Tab 3: Kasir Postfix (Langkah Transkrip)
+        self.tab_postfix = tk.Frame(self.notebook, bg="#ffffff")
+        self.notebook.add(self.tab_postfix, text="  🧾 Transkrip Postfix Kasir  ")
+        self._create_postfix_view(self.tab_postfix)
 
         # 3. Bottom Section: COMMAND history panel
         cmd_container = tk.Frame(parent, bg="#ffffff", padx=16, pady=4)
@@ -390,6 +402,12 @@ class AppUI:
         btn_all = tk.Button(nav_bar, text="Semua Data", font=("Segoe UI", 8, "bold"), command=self._tampilkan_semua_data)
         btn_all.pack(side=tk.LEFT, padx=2)
 
+        tk.Label(nav_bar, text="| Sumber Data:", bg="#f8fafc", font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(8, 2))
+        self.btn_src_m1 = tk.Button(nav_bar, text="M1 (Semua)", font=("Segoe UI", 8, "bold"), bg="#d8e5f2", command=lambda: self._set_tabel_sumber("M1"))
+        self.btn_src_m1.pack(side=tk.LEFT, padx=1)
+        self.btn_src_m2 = tk.Button(nav_bar, text="M2 (Antrean)", font=("Segoe UI", 8), bg="#ffffff", command=lambda: self._set_tabel_sumber("M2"))
+        self.btn_src_m2.pack(side=tk.LEFT, padx=1)
+
         self.lbl_total_info = tk.Label(
             nav_bar,
             text="Total: 0 pesanan",
@@ -425,6 +443,37 @@ class AppUI:
         res_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
         self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+    def _create_postfix_view(self, parent):
+        pf_container = tk.Frame(parent, bg="#ffffff", padx=4, pady=4)
+        pf_container.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("langkah", "token", "tindakan", "stack", "output")
+        self.tree_postfix = ttk.Treeview(
+            pf_container,
+            columns=columns,
+            show="headings",
+            style="Custom.Treeview",
+            selectmode="browse"
+        )
+        col_configs = (
+            ("langkah", "No. Langkah", 110, tk.CENTER),
+            ("token", "Token", 90, tk.CENTER),
+            ("tindakan", "Tindakan / Operasi Stack", 280, tk.W),
+            ("stack", "Kondisi Stack (Operator/Nilai)", 200, tk.W),
+            ("output", "Output Postfix / Hasil Hitung", 260, tk.W),
+        )
+        for col_id, col_text, col_w, col_anchor in col_configs:
+            self.tree_postfix.heading(col_id, text=col_text, anchor=col_anchor)
+            self.tree_postfix.column(col_id, width=col_w, minwidth=60, anchor=col_anchor)
+
+        pf_scroll_y = tk.Scrollbar(pf_container, orient=tk.VERTICAL, command=self.tree_postfix.yview)
+        pf_scroll_x = tk.Scrollbar(pf_container, orient=tk.HORIZONTAL, command=self.tree_postfix.xview)
+        self.tree_postfix.configure(yscrollcommand=pf_scroll_y.set, xscrollcommand=pf_scroll_x.set)
+
+        pf_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        pf_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.tree_postfix.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
     def _log_command(self, cmd_name, module_name, durasi_ms):
         log_line = "%-24s -> %-18s %8.2f ms\n" % (cmd_name, module_name, durasi_ms)
         self.cmd_text.insert(tk.END, log_line)
@@ -446,14 +495,33 @@ class AppUI:
             )
             self.action_info_lbl.config(text=msg)
 
+    def _set_tabel_sumber(self, sumber):
+        self.tabel_sumber = sumber
+        if hasattr(self, 'btn_src_m1') and hasattr(self, 'btn_src_m2'):
+            if sumber == "M1":
+                self.btn_src_m1.config(bg="#d8e5f2", font=("Segoe UI", 8, "bold"))
+                self.btn_src_m2.config(bg="#ffffff", font=("Segoe UI", 8))
+            else:
+                self.btn_src_m1.config(bg="#ffffff", font=("Segoe UI", 8))
+                self.btn_src_m2.config(bg="#d8e5f2", font=("Segoe UI", 8, "bold"))
+        self.current_page = 1
+        self._refresh_table()
+
     def _refresh_table(self, highlight_idx=None):
-        """Memperbarui baris tabel Treeview sesuai halaman saat ini."""
+        """Memperbarui baris tabel Treeview sesuai halaman saat ini dan sumber data aktif."""
         self.tree.delete(*self.tree.get_children())
-        total = self.sistem.array.size
+        if self.tabel_sumber == "M1":
+            total = self.sistem.array.size
+            getter = self.sistem.array.get
+            src_label = "M1 (Semua)"
+        else:
+            total = len(self.sistem_m2.antrean_circular)
+            getter = self.sistem_m2.antrean_circular.get
+            src_label = "M2 (Antrean FIFO)"
 
         if total == 0:
             self.lbl_page_info.config(text="Halaman 0 / 0")
-            self.lbl_total_info.config(text="Total: 0 pesanan")
+            self.lbl_total_info.config(text="[%s] Total: 0 pesanan" % src_label)
             return
 
         if self.show_all_mode:
@@ -471,11 +539,13 @@ class AppUI:
             end_idx = min(start_idx + self.page_size, total)
             self.lbl_page_info.config(text="Halaman %d / %d" % (self.current_page, self.total_pages))
 
-        self.lbl_total_info.config(text="Menampilkan %d - %d dari %d pesanan" % (start_idx + 1, end_idx, total))
+        self.lbl_total_info.config(text="[%s] %d - %d dari %d pesanan" % (src_label, start_idx + 1, end_idx, total))
 
         target_item_id = None
         for i in range(start_idx, end_idx):
-            p = self.sistem.array.get(i)
+            p = getter(i)
+            if p is None:
+                continue
             selesai_str = str(p.t_selesai_detik) if p.t_selesai_detik is not None else ""
             row_vals = (
                 p.oid,
@@ -534,7 +604,15 @@ class AppUI:
 
         # Highlight active menu button
         for name, btn in self.menu_buttons:
-            if name == menu_name or (menu_name == "DATA - LOAD" and name == "Load") or (menu_name == "BENCHMARK M1" and name == "ADU PERFORMA ARRAY VS LINKEDLIST"):
+            is_active = (
+                name == menu_name or
+                (menu_name == "DATA - LOAD" and name == "Load") or
+                (menu_name == "BENCHMARK M1" and "ARRAY VS LINKEDLIST" in name) or
+                (menu_name == "BENCHMARK M2" and "DEQUEUE NAIF VS CIRCULAR" in name) or
+                (menu_name == "STACK - POSTFIX" and "POSTFIX" in name) or
+                name.startswith(menu_name)
+            )
+            if is_active:
                 btn.config(bg="#d8e5f2", relief=tk.SOLID)
             else:
                 btn.config(bg="#ffffff", relief=tk.SOLID)
@@ -736,6 +814,293 @@ class AppUI:
             )
             btn.pack(side=tk.LEFT)
 
+        elif menu_name == "STACK - POSTFIX":
+            self.title_label.config(text="Stack: Mesin Kasir Postfix (Shunting-Yard & Evaluator)")
+            self.subtitle_label.config(text="Ubah struk aritmetika infix menjadi postfix via stack operator, lalu hitung totalnya via stack nilai.")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            tk.Label(row, text="Ekspresi Struk Infix:", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 8))
+            expr_entry = tk.Entry(row, width=42, font=("Segoe UI", 9))
+            expr_entry.insert(0, "( 3 * 12000 ) + ( 2 * 8500 ) - 5000")
+            expr_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn = tk.Button(
+                row,
+                text="HITUNG STRUK KASIR",
+                bg="#1c3b57",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=14,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_kasir_postfix(expr_entry.get().strip())
+            )
+            btn.pack(side=tk.LEFT)
+
+            # Presets baris contoh ekspresi
+            preset_row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            preset_row.pack(fill=tk.X, pady=(4, 0))
+
+            tk.Label(preset_row, text="Preset Contoh:", bg="#ffffff", font=("Segoe UI", 8, "italic"), fg="#64748b").pack(side=tk.LEFT, padx=(0, 6))
+
+            def _set_expr(text):
+                expr_entry.delete(0, tk.END)
+                expr_entry.insert(0, text)
+                self._aksi_kasir_postfix(text)
+
+            p1 = tk.Button(preset_row, text="Acuan ITS (Rp 48.000)", font=("Segoe UI", 8),
+                           command=lambda: _set_expr("( 3 * 12000 ) + ( 2 * 8500 ) - 5000"))
+            p1.pack(side=tk.LEFT, padx=2)
+
+            p2 = tk.Button(preset_row, text="Minus Beruntun (Rp 7.000)", font=("Segoe UI", 8),
+                           command=lambda: _set_expr("10000 - 2000 - 1000"))
+            p2.pack(side=tk.LEFT, padx=2)
+
+            p3 = tk.Button(preset_row, text="Kurung Bersarang (Rp 6)", font=("Segoe UI", 8),
+                           command=lambda: _set_expr("( ( 2 + 3 ) * ( 10 - 4 ) ) / 5"))
+            p3.pack(side=tk.LEFT, padx=2)
+
+            p4 = tk.Button(preset_row, text="Tanpa Kurung (Rp 48.000)", font=("Segoe UI", 8),
+                           command=lambda: _set_expr("3 * 12000 + 2 * 8500 - 5000"))
+            p4.pack(side=tk.LEFT, padx=2)
+
+        elif menu_name == "QUEUE - ENQUEUE":
+            self.title_label.config(text="Antrean: Tambah Pesanan Baru (Enqueue)")
+            self.subtitle_label.config(text="Menambah pesanan di belakang KEDUA antrean (O(1)). Mencatat aksi ke Undo dan mengosongkan Redo.")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            tk.Label(row, text="Pelanggan:", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 4))
+            name_entry = tk.Entry(row, width=20, font=("Segoe UI", 9))
+            name_entry.insert(0, "Pelanggan Baru")
+            name_entry.pack(side=tk.LEFT, padx=(0, 8))
+
+            tk.Label(row, text="Menu:", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 4))
+            menu_entry = tk.Entry(row, width=18, font=("Segoe UI", 9))
+            menu_entry.insert(0, "Nasi Padang Rendang")
+            menu_entry.pack(side=tk.LEFT, padx=(0, 8))
+
+            tk.Label(row, text="Harga (Rp):", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 4))
+            price_entry = tk.Entry(row, width=10, font=("Segoe UI", 9))
+            price_entry.insert(0, "25000")
+            price_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn = tk.Button(
+                row,
+                text="ENQUEUE",
+                bg="#1c3b57",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=14,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_enqueue(name_entry.get().strip(), menu_entry.get().strip(), price_entry.get().strip())
+            )
+            btn.pack(side=tk.LEFT)
+
+        elif menu_name == "QUEUE - DEQUEUE NAIF":
+            self.title_label.config(text="Antrean Naif: Layani Pesanan Terdepan (Larik + pop(0))")
+            self.subtitle_label.config(text="Mengambil pesanan indeks 0, lalu menggeser seluruh sisa elemen ke kiri (O(n)).")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            tk.Label(row, text="Jumlah pesanan (k):", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+            k_entry = tk.Entry(row, width=8, font=("Segoe UI", 9))
+            k_entry.insert(0, "1")
+            k_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn_custom = tk.Button(
+                row,
+                text="LAYANI k PESANAN",
+                bg="#1c3b57",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=10,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_dequeue_naif(k_entry.get().strip())
+            )
+            btn_custom.pack(side=tk.LEFT, padx=(0, 6))
+
+            btn_1 = tk.Button(
+                row,
+                text="LAYANI 1 PESANAN",
+                bg="#0284c7",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=10,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_dequeue_naif("1")
+            )
+            btn_1.pack(side=tk.LEFT, padx=(0, 6))
+
+            btn_100 = tk.Button(
+                row,
+                text="LAYANI 100 PESANAN",
+                bg="#b45309",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=10,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_dequeue_naif("100")
+            )
+            btn_100.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn_sync = tk.Button(
+                row,
+                text="🔄 Sinkronkan Naif dari Circular",
+                font=("Segoe UI", 8),
+                command=self._aksi_sinkronkan_antrean_m2
+            )
+            btn_sync.pack(side=tk.LEFT)
+
+        elif menu_name == "QUEUE - DEQUEUE CIRCULAR":
+            self.title_label.config(text="Antrean Melingkar: Layani Pesanan Terdepan (Circular Queue)")
+            self.subtitle_label.config(text="Melayani pesanan hanya dengan memajukan front = (front + 1) % K. 0 ELEMEN DIGESER (O(1)).")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            tk.Label(row, text="Jumlah pesanan (k):", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+            k_entry = tk.Entry(row, width=8, font=("Segoe UI", 9))
+            k_entry.insert(0, "1")
+            k_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn_custom = tk.Button(
+                row,
+                text="LAYANI k PESANAN",
+                bg="#1c3b57",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=10,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_dequeue_circular(k_entry.get().strip())
+            )
+            btn_custom.pack(side=tk.LEFT, padx=(0, 6))
+
+            btn_1 = tk.Button(
+                row,
+                text="LAYANI 1 PESANAN",
+                bg="#0284c7",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=10,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_dequeue_circular("1")
+            )
+            btn_1.pack(side=tk.LEFT, padx=(0, 6))
+
+            btn_100 = tk.Button(
+                row,
+                text="LAYANI 100 PESANAN",
+                bg="#059669",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=10,
+                pady=2,
+                cursor="hand2",
+                command=lambda: self._aksi_queue_dequeue_circular("100")
+            )
+            btn_100.pack(side=tk.LEFT)
+
+        elif menu_name == "STACK - UNDO":
+            self.title_label.config(text="Tumpukan Undo: Batalkan Aksi Antrean Terakhir")
+            self.subtitle_label.config(text="Pop dari tumpukan Undo -> jalankan kebalikannya -> push ke tumpukan Redo.")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            btn = tk.Button(
+                row,
+                text="UNDO AKSI TERAKHIR",
+                bg="#b91c1c",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=16,
+                pady=3,
+                cursor="hand2",
+                command=self._aksi_stack_undo
+            )
+            btn.pack(side=tk.LEFT, padx=(0, 12))
+
+            u_depth = len(self.sistem_m2.undo_stack)
+            r_depth = len(self.sistem_m2.redo_stack)
+            self.lbl_undo_info = tk.Label(
+                row,
+                text="Kedalaman Tumpukan: Undo = %d catatan | Redo = %d catatan" % (u_depth, r_depth),
+                bg="#ffffff",
+                fg="#475569",
+                font=("Segoe UI", 9, "bold")
+            )
+            self.lbl_undo_info.pack(side=tk.LEFT)
+
+        elif menu_name == "STACK - REDO":
+            self.title_label.config(text="Tumpukan Redo: Kerjakan Ulang Aksi yang Dibatalkan")
+            self.subtitle_label.config(text="Pop dari tumpukan Redo -> kerjakan ulang aksi aslinya -> push kembali ke tumpukan Undo.")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            btn = tk.Button(
+                row,
+                text="REDO AKSI TERAKHIR",
+                bg="#059669",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=16,
+                pady=3,
+                cursor="hand2",
+                command=self._aksi_stack_redo
+            )
+            btn.pack(side=tk.LEFT, padx=(0, 12))
+
+            u_depth = len(self.sistem_m2.undo_stack)
+            r_depth = len(self.sistem_m2.redo_stack)
+            self.lbl_redo_info = tk.Label(
+                row,
+                text="Kedalaman Tumpukan: Undo = %d catatan | Redo = %d catatan" % (u_depth, r_depth),
+                bg="#ffffff",
+                fg="#475569",
+                font=("Segoe UI", 9, "bold")
+            )
+            self.lbl_redo_info.pack(side=tk.LEFT)
+
+        elif menu_name == "BENCHMARK M2":
+            self.title_label.config(text="Adu Performa Langsung: Antrean Naif vs Antrean Melingkar")
+            self.subtitle_label.config(text="Membandingkan pergeseran elemen dan waktu eksekusi riil pada dataset 19.850 antrean (k=1 dan k=100).")
+
+            row = tk.Frame(self.form_fields_frame, bg="#ffffff")
+            row.pack(fill=tk.X, pady=2)
+
+            btn = tk.Button(
+                row,
+                text="JALANKAN ADU PERFORMA ANTREAN (k=1 & k=100)",
+                bg="#1c3b57",
+                fg="#ffffff",
+                font=("Segoe UI", 9, "bold"),
+                padx=14,
+                pady=4,
+                cursor="hand2",
+                command=self._aksi_benchmark_m2
+            )
+            btn.pack(side=tk.LEFT, padx=(0, 10))
+
+            btn_reset = tk.Button(
+                row,
+                text="🔄 Reset Antrean dari CSV",
+                font=("Segoe UI", 8),
+                command=self._aksi_sinkronkan_antrean_m2
+            )
+            btn_reset.pack(side=tk.LEFT)
+
     def _pastikan_data_termuat(self):
         if not self.sistem.is_loaded or self.sistem.array.size == 0:
             csv_path = "data/pesanan.csv"
@@ -757,22 +1122,24 @@ class AppUI:
 
         try:
             total, ms_arr, ms_ll = self.sistem.muat_csv(filepath)
+            total_m2, ms_m2 = self.sistem_m2.muat_dari_csv(filepath)
             self._log_command("load", "M1 - larik", ms_arr)
             self._log_command("load", "M1 - linked list", ms_ll)
+            self._log_command("load_antre", "M2 - queue", ms_m2)
 
             self.current_page = 1
             self._refresh_table()
             self.notebook.select(0)
 
-            msg = "Data berhasil dimuat: %d pesanan. Larik: %.2f ms (Kapasitas: %d) | Rantai: %.2f ms" % (
-                total, ms_arr, self.sistem.array.capacity, ms_ll
+            msg = "Data berhasil dimuat: %d pesanan (M1) & %d antrean ANTRE (M2). Larik: %.2f ms | Rantai: %.2f ms | Antrean: %.2f ms" % (
+                total, total_m2, ms_arr, ms_ll, ms_m2
             )
             self.action_info_lbl.config(text=msg)
 
             # Rincian teks pada tab Log
             self.result_text.delete("1.0", tk.END)
             txt = "=" * 60 + "\n"
-            txt += "HASIL PEMUATAN DATA PESANAN\n"
+            txt += "HASIL PEMUATAN DATA PESANAN (M1 & M2)\n"
             txt += "=" * 60 + "\n"
             txt += "Berkas sumber          : %s\n" % filepath
             txt += "Total data terbaca     : %d pesanan\n\n" % total
@@ -783,12 +1150,16 @@ class AppUI:
             txt += "   - Durasi pemuatan   : %.2f ms (amortized O(1))\n\n" % ms_arr
             txt += "2. STRUKTUR RANTAI (LINKED LIST HEAD & TAIL):\n"
             txt += "   - Ukuran simpul     : %d simpul\n" % self.sistem.linklist.size
-            txt += "   - Durasi pemuatan   : %.2f ms (O(1) via pointer tail)\n" % ms_ll
+            txt += "   - Durasi pemuatan   : %.2f ms (O(1) via pointer tail)\n\n" % ms_ll
+            txt += "3. STRUKTUR ANTREAN M2 (STATUS 'ANTRE'):\n"
+            txt += "   - Jumlah antrean    : %d pesanan\n" % total_m2
+            txt += "   - Kapasitas queue   : %d slot\n" % self.sistem_m2.antrean_circular.capacity
+            txt += "   - Durasi pemuatan   : %.2f ms (kedua antrean simultan)\n" % ms_m2
             txt += "=" * 60 + "\n"
             self.result_text.insert(tk.END, txt)
 
-            badge = "[M1 - larik] %.2f ms" % ms_arr
-            info = "Total: %d pesanan | Kapasitas: %d" % (total, self.sistem.array.capacity)
+            badge = "[M1 & M2] %.2f ms" % ms_arr
+            info = "Total: %d pesanan | Antrean: %d pesanan" % (total, total_m2)
             self._update_status(badge, info)
 
         except Exception as e:
@@ -1015,5 +1386,347 @@ class AppUI:
         self._update_status("[M1 - benchmark] Selesai", "Adu performa Array vs Linked List berhasil.")
         self.action_info_lbl.config(text="Adu performa selesai. Hasil rincian ditampilkan pada tab Log & Adu Performa.")
 
+    def _aksi_kasir_postfix(self, ekspresi):
+        if not ekspresi:
+            messagebox.showwarning("Peringatan", "Silakan masukkan ekspresi aritmetika struk kasir.")
+            return
+
+        try:
+            t0 = time.perf_counter()
+            tokens, langkah_postfix = KasirPostfix.ke_postfix(ekspresi)
+            total, langkah_eval = KasirPostfix.hitung(tokens)
+            t1 = time.perf_counter()
+            durasi_ms = (t1 - t0) * 1000.0
+
+            self._log_command("stack_postfix", "M2 - stack", durasi_ms)
+
+            # Isi tab Transkrip Postfix
+            self.tree_postfix.delete(*self.tree_postfix.get_children())
+
+            # Tahap 1: Konversi Infix ke Postfix
+            for s in langkah_postfix:
+                self.tree_postfix.insert("", tk.END, values=(s[0], s[1], s[2], s[3], s[4]))
+
+            # Separator visual
+            self.tree_postfix.insert("", tk.END, values=("---", "---", "=== EVALUASI NILAI POSTFIX ===", "---", "---"))
+
+            # Tahap 2: Evaluasi Nilai Postfix
+            for s in langkah_eval:
+                self.tree_postfix.insert("", tk.END, values=(s[0], s[1], s[2], s[3], s[4]))
+
+            # Baris Akhir: Total
+            total_str = "Rp {:,}".format(total).replace(",", ".")
+            self.tree_postfix.insert("", tk.END, values=("TOTAL", "=", "Total Akhir Struk Kasir", "kosong", total_str))
+
+            postfix_str = " ".join(tokens)
+            info = "POSTFIX: %s | TOTAL: %s [M2 - stack] %.2f ms" % (postfix_str, total_str, durasi_ms)
+            self.action_info_lbl.config(text=info)
+            self._update_status("[M2 - stack] %.2f ms" % durasi_ms, "Total Struk: %s" % total_str)
+
+            # Rincian teks pada tab Log
+            self.result_text.delete("1.0", tk.END)
+            txt = "=" * 80 + "\n"
+            txt += "TRANSKRIP MESIN KASIR POSTFIX (SHUNTING-YARD & EVALUATOR)\n"
+            txt += "=" * 80 + "\n"
+            txt += "Ekspresi Struk Infix   : %s\n" % ekspresi
+            txt += "Hasil Notasi Postfix   : %s\n" % postfix_str
+            txt += "Total Pembayaran Kasir : %s\n" % total_str
+            txt += "Waktu Komputasi        : %.2f ms\n\n" % durasi_ms
+            txt += "%-10s | %-8s | %-32s | %-16s | %s\n" % ("Langkah", "Token", "Tindakan / Operasi Stack", "Kondisi Stack", "Output / Hasil")
+            txt += "-" * 80 + "\n"
+            for s in langkah_postfix:
+                txt += "%-10s | %-8s | %-32s | %-16s | %s\n" % (s[0], s[1], s[2], s[3], s[4])
+            txt += "-" * 80 + "\n"
+            for s in langkah_eval:
+                txt += "%-10s | %-8s | %-32s | %-16s | %s\n" % (s[0], s[1], s[2], s[3], s[4])
+            txt += "=" * 80 + "\n"
+            txt += "HASIL AKHIR : %s\n" % total_str
+            self.result_text.insert(tk.END, txt)
+
+            # Buka tab Transkrip Postfix
+            self.notebook.select(2)
+
+        except Exception as e:
+            messagebox.showerror("Galat Evaluasi Struk", "Terjadi kesalahan evaluasi: %s" % str(e))
+
+    def _aksi_queue_enqueue(self, nama_pelanggan, nama_menu, harga_str):
+        if not self._pastikan_data_termuat():
+            return
+        if not nama_pelanggan:
+            nama_pelanggan = "Pelanggan Baru"
+        if not nama_menu:
+            nama_menu = "Menu Baru"
+        try:
+            harga = int(harga_str)
+        except ValueError:
+            harga = 25000
+
+        oid_baru = self.sistem_m2.generate_oid()
+        t_masuk = int(time.time()) % 86400
+        p = Pesanan(
+            oid=oid_baru,
+            pelanggan=nama_pelanggan,
+            resto="resto-antre",
+            menu=nama_menu,
+            harga=harga,
+            prioritas=3,
+            t_masuk_detik=t_masuk,
+            t_selesai_detik=None,
+            status="ANTRE"
+        )
+
+        p, durasi_ms = self.sistem_m2.enqueue_kedua(p)
+        # Sinkronkan ke M1 array & linked list agar konsisten
+        self.sistem.array.append(p)
+        self.sistem.linklist.append(p)
+
+        self._log_command("queue_enqueue", "M2 - queue", durasi_ms)
+
+        total_antre = len(self.sistem_m2.antrean_circular)
+        info = "%d pesanan berstatus ANTRE masuk ke KEDUA antrean. %s masuk paling belakang [M2 - queue] %.2f ms" % (
+            total_antre, p.oid, durasi_ms
+        )
+        self.action_info_lbl.config(text=info)
+        self._update_status("[M2 - queue] %.2f ms" % durasi_ms, "%s masuk paling belakang (Total: %d)" % (p.oid, total_antre))
+
+        # Tampilkan pada tab tabel sumber M2
+        self._set_tabel_sumber("M2")
+        self.notebook.select(0)
+        if not self.show_all_mode:
+            self.current_page = self.total_pages
+        self._refresh_table(highlight_idx=len(self.sistem_m2.antrean_circular) - 1)
+
+    def _aksi_queue_dequeue_naif(self, k_str):
+        if not self._pastikan_data_termuat():
+            return
+        try:
+            k = int(k_str)
+            if k <= 0:
+                k = 1
+        except ValueError:
+            messagebox.showerror("Galat Input", "Jumlah pesanan harus bilangan bulat positif.")
+            return
+
+        if len(self.sistem_m2.antrean_naif) == 0:
+            messagebox.showinfo("Antrean Kosong", "Antrean naif saat ini kosong.")
+            return
+
+        hasil, shifts, durasi_ms = self.sistem_m2.dequeue_naif(k)
+        cmd = "queue_dequeue_naive %d" % k
+        self._log_command(cmd, "M2 - queue naif", durasi_ms)
+
+        info = "%d pesanan keluar | %d elemen digeser [M2 - queue naif] %.2f ms" % (
+            len(hasil), shifts, durasi_ms
+        )
+        self.action_info_lbl.config(text=info)
+        self._update_status("[M2 - queue naif] %.2f ms" % durasi_ms, "%d pesanan keluar | %d elemen digeser" % (len(hasil), shifts))
+
+        # Rincian pada tab Log
+        self.result_text.delete("1.0", tk.END)
+        txt = "=" * 60 + "\n"
+        txt += "HASIL DEQUEUE ANTREAN NAIF (LARIK + pop(0))\n"
+        txt += "=" * 60 + "\n"
+        txt += "Jumlah dilayani         : %d pesanan\n" % len(hasil)
+        txt += "Total elemen digeser    : %d pergeseran memori (O(n))\n" % shifts
+        txt += "Durasi eksekusi         : %.2f ms\n" % durasi_ms
+        txt += "Sisa antrean naif       : %d pesanan\n" % len(self.sistem_m2.antrean_naif)
+        txt += "Akumulasi pergeseran    : %d geseran\n\n" % self.sistem_m2.antrean_naif.total_geseran
+        txt += "DAFTAR PESANAN YANG DILAYANI:\n"
+        for i, p in enumerate(hasil[:20]):
+            txt += "%2d. %s - %s (%s, Rp %d)\n" % (i + 1, p.oid, p.pelanggan, p.menu, p.harga)
+        if len(hasil) > 20:
+            txt += "    ... dan %d pesanan lainnya ...\n" % (len(hasil) - 20)
+        txt += "=" * 60 + "\n"
+        self.result_text.insert(tk.END, txt)
+        self.notebook.select(1)
+
+    def _aksi_queue_dequeue_circular(self, k_str):
+        if not self._pastikan_data_termuat():
+            return
+        try:
+            k = int(k_str)
+            if k <= 0:
+                k = 1
+        except ValueError:
+            messagebox.showerror("Galat Input", "Jumlah pesanan harus bilangan bulat positif.")
+            return
+
+        if len(self.sistem_m2.antrean_circular) == 0:
+            messagebox.showinfo("Antrean Kosong", "Antrean melingkar saat ini kosong.")
+            return
+
+        hasil, shifts, durasi_ms = self.sistem_m2.dequeue_circular(k, catat_undo=True)
+        cmd = "queue_dequeue_circular %d" % k
+        self._log_command(cmd, "M2 - queue circular", durasi_ms)
+
+        front = self.sistem_m2.antrean_circular.front
+        rear = self.sistem_m2.antrean_circular.rear
+        cap = self.sistem_m2.antrean_circular.capacity
+
+        info = "%d pesanan keluar | 0 elemen digeser (front=%d, rear=%d, cap=%d) [M2 - queue circular] %.2f ms" % (
+            len(hasil), front, rear, cap, durasi_ms
+        )
+        self.action_info_lbl.config(text=info)
+        self._update_status("[M2 - queue circular] %.2f ms" % durasi_ms, "%d pesanan keluar | 0 elemen digeser" % len(hasil))
+
+        # Rincian pada tab Log
+        self.result_text.delete("1.0", tk.END)
+        txt = "=" * 60 + "\n"
+        txt += "HASIL DEQUEUE ANTREAN MELINGKAR (CIRCULAR QUEUE)\n"
+        txt += "=" * 60 + "\n"
+        txt += "Jumlah dilayani         : %d pesanan\n" % len(hasil)
+        txt += "Total elemen digeser    : 0 elemen (O(1) konstan via front pointer)\n"
+        txt += "Durasi eksekusi         : %.2f ms\n" % durasi_ms
+        txt += "Posisi penunjuk         : front = %d, rear = %d, count = %d\n" % (front, rear, len(self.sistem_m2.antrean_circular))
+        txt += "Kapasitas buffer        : %d slot (modulo %d)\n\n" % (cap, cap)
+        txt += "DAFTAR PESANAN YANG DILAYANI:\n"
+        for i, p in enumerate(hasil[:20]):
+            txt += "%2d. %s - %s (%s, Rp %d)\n" % (i + 1, p.oid, p.pelanggan, p.menu, p.harga)
+        if len(hasil) > 20:
+            txt += "    ... dan %d pesanan lainnya ...\n" % (len(hasil) - 20)
+        txt += "=" * 60 + "\n"
+        self.result_text.insert(tk.END, txt)
+
+        # Refresh tabel M2
+        self._set_tabel_sumber("M2")
+        self._refresh_table()
+
+    def _aksi_stack_undo(self):
+        aksi, durasi_ms, pesan = self.sistem_m2.undo_last()
+        self._log_command("stack_undo", "M2 - stack", durasi_ms)
+
+        info = "%s [M2 - stack] %.2f ms" % (pesan, durasi_ms)
+        self.action_info_lbl.config(text=info)
+        self._update_status("[M2 - stack] %.2f ms" % durasi_ms, pesan)
+
+        u_depth = len(self.sistem_m2.undo_stack)
+        r_depth = len(self.sistem_m2.redo_stack)
+        if hasattr(self, 'lbl_undo_info') and self.lbl_undo_info.winfo_exists():
+            self.lbl_undo_info.config(
+                text="Kedalaman Tumpukan: Undo = %d catatan | Redo = %d catatan" % (u_depth, r_depth)
+            )
+
+        self._refresh_table()
+
+    def _aksi_stack_redo(self):
+        aksi, durasi_ms, pesan = self.sistem_m2.redo_last()
+        self._log_command("stack_redo", "M2 - stack", durasi_ms)
+
+        info = "%s [M2 - stack] %.2f ms" % (pesan, durasi_ms)
+        self.action_info_lbl.config(text=info)
+        self._update_status("[M2 - stack] %.2f ms" % durasi_ms, pesan)
+
+        u_depth = len(self.sistem_m2.undo_stack)
+        r_depth = len(self.sistem_m2.redo_stack)
+        if hasattr(self, 'lbl_redo_info') and self.lbl_redo_info.winfo_exists():
+            self.lbl_redo_info.config(
+                text="Kedalaman Tumpukan: Undo = %d catatan | Redo = %d catatan" % (u_depth, r_depth)
+            )
+
+        self._refresh_table()
+
+    def _aksi_sinkronkan_antrean_m2(self):
+        if not self._pastikan_data_termuat():
+            return
+        # Jika antrean kosong, muat ulang dari CSV
+        if len(self.sistem_m2.antrean_circular) == 0:
+            csv_path = "data/pesanan.csv"
+            if os.path.exists(csv_path):
+                self.sistem_m2.muat_dari_csv(csv_path)
+        else:
+            self.sistem_m2.sinkronkan_antrean()
+
+        n = len(self.sistem_m2.antrean_circular)
+        info = "Antrean Naif disinkronkan kembali dari Antrean Melingkar (%d pesanan)." % n
+        self.action_info_lbl.config(text=info)
+        self._update_status("[M2 - sync]", "Antrean naif & circular tersinkronisasi (%d pesanan)" % n)
+        self._refresh_table()
+
+    def _aksi_benchmark_m2(self):
+        if not self._pastikan_data_termuat():
+            return
+
+        self._update_status("[ menguji... ]", "Menjalankan adu performa M2...")
+        self.root.update_idletasks()
+
+        # Pastikan antrean ada isinya
+        if len(self.sistem_m2.antrean_circular) < 200:
+            csv_path = "data/pesanan.csv"
+            if os.path.exists(csv_path):
+                self.sistem_m2.muat_dari_csv(csv_path)
+
+        # Sinkronkan sebelum uji agar jujur
+        self.sistem_m2.sinkronkan_antrean()
+        n_awal = len(self.sistem_m2.antrean_circular)
+
+        # 1. Enqueue Pesanan Baru (keduanya)
+        p_baru = Pesanan(self.sistem_m2.generate_oid(), "Tester Benchmark", "resto", "menu", 20000, 3, 0, None, "ANTRE")
+        t0 = time.perf_counter()
+        self.sistem_m2.antrean_naif.enqueue(p_baru)
+        t_enq_naif = (time.perf_counter() - t0) * 1000.0
+
+        t0 = time.perf_counter()
+        self.sistem_m2.antrean_circular.enqueue(p_baru)
+        t_enq_circ = (time.perf_counter() - t0) * 1000.0
+
+        # 2. Dequeue k=1
+        t0 = time.perf_counter()
+        out_n1, s_n1 = self.sistem_m2.antrean_naif.dequeue_banyak(1)
+        t_deq_n1 = (time.perf_counter() - t0) * 1000.0
+
+        t0 = time.perf_counter()
+        out_c1, s_c1 = self.sistem_m2.antrean_circular.dequeue_banyak(1)
+        t_deq_c1 = (time.perf_counter() - t0) * 1000.0
+
+        # 3. Dequeue k=100
+        t0 = time.perf_counter()
+        out_n100, s_n100 = self.sistem_m2.antrean_naif.dequeue_banyak(100)
+        t_deq_n100 = (time.perf_counter() - t0) * 1000.0
+
+        t0 = time.perf_counter()
+        out_c100, s_c100 = self.sistem_m2.antrean_circular.dequeue_banyak(100)
+        t_deq_c100 = (time.perf_counter() - t0) * 1000.0
+
+        # Sinkronkan kembali agar kondisi normal
+        self.sistem_m2.sinkronkan_antrean()
+
+        self._log_command("benchmark_m2 (k=1)", "M2 - adu performa", t_deq_n1)
+        self._log_command("benchmark_m2 (k=100)", "M2 - adu performa", t_deq_n100)
+
+        # Susun laporan tabel perbandingan
+        self.result_text.delete("1.0", tk.END)
+        msg = "=" * 85 + "\n"
+        msg += "TABEL PERBANDINGAN PERFORMA REAL-TIME: ANTREAN NAIF VS MELINGKAR (n = %d)\n" % n_awal
+        msg += "=" * 85 + "\n\n"
+
+        msg += "%-22s | %-16s | %-18s | %s\n" % ("Operasi Layanan", "Antrean Naif", "Antrean Melingkar", "Mekanisme Memori Nyata")
+        msg += "%s\n" % ("-" * 85)
+        msg += "%-22s | %7.2f ms (0 geser) | %7.2f ms (0 geser)  | Keduanya menempel di ujung belakang (O(1))\n" % (
+            "ENQUEUE (1 pesanan)", t_enq_naif, t_enq_circ
+        )
+        msg += "%-22s | %7.2f ms (%d geser) | %7.2f ms (0 geser)  | Naif geser %d; Circular hanya front++ (O(1))\n" % (
+            "DEQUEUE k=1", t_deq_n1, s_n1, t_deq_c1, s_n1
+        )
+        msg += "%-22s | %7.2f ms (%d geser) | %7.2f ms (0 geser)  | Naif geser total %d; Circular O(1) konstan\n" % (
+            "DEQUEUE k=100", t_deq_n100, s_n100, t_deq_c100, s_n100
+        )
+        msg += "%s\n\n" % ("=" * 85)
+
+        msg += "ANALISIS & BUKTI EMPIRIS:\n"
+        msg += "1. ENQUEUE : Keduanya sama murahnya (O(1)) karena hanya mengisi slot kosong di ujung belakang buffer.\n"
+        msg += "2. DEQUEUE k=1 : Antrean Naif wajib menggeser seluruh sisa elemen (~%d geseran). Circular Queue 0 pergeseran.\n" % s_n1
+        msg += "3. DEQUEUE k=100 : Antrean Naif menderita komputasi berat dengan ~%s geseran memori (~%.2f ms),\n" % (
+            "{:,}".format(s_n100).replace(",", "."), t_deq_n100
+        )
+        msg += "   sedangkan Circular Queue tetap instan (%.2f ms) karena hanya memajukan pointer front sebanyak 100 kali.\n\n" % t_deq_c100
+        msg += "KESIMPULAN: Antrean Melingkar (Circular Queue) memberikan efisiensi O(1) mutlak tanpa overhead pergeseran memori.\n"
+
+        self.result_text.insert(tk.END, msg)
+        self.notebook.select(1)
+
+        self._update_status("[M2 - benchmark] Selesai", "Adu performa Antrean Naif vs Melingkar selesai.")
+        self.action_info_lbl.config(text="Adu performa antrean M2 selesai. Hasil perbandingan ditampilkan di tab Log.")
+
     def _placeholder_milestone(self, m_name):
         messagebox.showinfo("Informasi Milestone", "Fitur %s akan dikembangkan pada tahapan tugas berikutnya." % m_name)
+
